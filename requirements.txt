@@ -1,4 +1,4 @@
 aiogram==2.25.1
+aiohttp==3.8.6
 python-dotenv
-aiohttp==3.9.3
 requests
