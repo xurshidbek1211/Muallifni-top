@@ -34,18 +34,16 @@ question_limit_kb = ReplyKeyboardMarkup(
 # ================== START KOMANDASI ==================
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    Bot.set_current(bot)  # Botni kontekstga o'rnatish
+    Bot.set_current(bot)
     chat_id = message.chat.id
     chat_type = message.chat.type
 
-    # Guruhda bot adminligini tekshirish
     if chat_type in ["group", "supergroup"]:
         chat_member = await bot.get_chat_member(chat_id, bot.id)
         if chat_member.status not in ["administrator", "creator"]:
             await message.reply("❌ Guruhda botni admin qilib tayinlang, shunda o‘yin ishlaydi!")
             return
 
-    # O'yin boshlash
     games[chat_id] = {
         "players": {},
         "limit": None,
@@ -92,7 +90,6 @@ async def send_question(chat_id):
     q = random.choice(available)
     game["current_question"] = q
     game["asked_questions"].append(q)
-    game["count"] += 1
 
     await bot.send_message(
         chat_id,
@@ -114,21 +111,20 @@ async def check_answer(message: types.Message):
 
     user = message.from_user.username or message.from_user.full_name
 
+    # To'g'ri javob berilgan bo'lsa
     if message.text.strip().lower() == question["muallif"].lower():
         game["players"][user] = game["players"].get(user, 0) + 1
+        await message.reply(f"✅ To‘g‘ri! {user} +1 ball")
 
-        # Har bir to'g'ri javobdan keyin reytingni ko'rsatish
-        ranking = sorted(game["players"].items(), key=lambda x: x[1], reverse=True)
-        text = f"✅ To‘g‘ri! {user} +1 ball\n\n🏅 Hozirgi natijalar:\n"
-        for i, (p, b) in enumerate(ranking, start=1):
-            text += f"{i}. {p} — {b} ball\n"
-        await message.reply(text)
+    # Savol berilganini hisobga olish
+    game["count"] += 1
+    game["current_question"] = None  # Javobdan keyin current_questionni tozalaymiz
 
-        # Agar savol limiti tugagan bo'lsa, o'yinni tugatish
-        if game["count"] >= game["limit"]:
-            await finish_game(chat_id)
-        else:
-            await send_question(chat_id)
+    # Agar limit tugagan bo‘lsa, o‘yinni tugatamiz
+    if game["count"] >= game["limit"]:
+        await finish_game(chat_id)
+    else:
+        await send_question(chat_id)
 
 # ================== O‘YIN TUGASHI VA TABRIK ==================
 async def finish_game(chat_id):
@@ -158,7 +154,7 @@ async def finish_game(chat_id):
 
 # ================== WEBHOOK SERVER ==================
 async def handle(request):
-    Bot.set_current(bot)  # Botni kontekstga o'rnatish har update uchun
+    Bot.set_current(bot)
     data = await request.json()
     update = types.Update(**data)
     await dp.process_update(update)
@@ -168,7 +164,7 @@ async def on_startup(app):
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook ishga tushdi!")
-    asyncio.create_task(ping())  # Background ping
+    asyncio.create_task(ping())
 
 # ================== BOT UXLAMASLIGI ==================
 async def ping():
@@ -177,7 +173,7 @@ async def ping():
             await bot.get_me()
         except:
             pass
-        await asyncio.sleep(480)  # har 8 daqiqa
+        await asyncio.sleep(480)
 
 # ================== APP ==================
 app = web.Application()
