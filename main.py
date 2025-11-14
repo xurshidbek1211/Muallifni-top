@@ -46,7 +46,8 @@ async def start(message: types.Message):
     games[chat_id] = {
         "players": {},
         "current_question": None,
-        "asked_questions": []
+        "asked_questions": [],
+        "answered": False  # birinchi javob uchun flag
     }
 
     await send_text(chat_type, chat_id, message, "🎉 *Muallifni top* o‘yini boshlandi!\nSavollar yuborilmoqda...", parse_mode="Markdown")
@@ -58,7 +59,6 @@ async def send_question(chat_id):
     if not game:
         return
 
-    # Avvalgi savollarni kitob nomi orqali tekshirish
     available = [q for q in questions if q['kitob'] not in game["asked_questions"]]
     if not available:
         await finish_game(chat_id)
@@ -66,7 +66,8 @@ async def send_question(chat_id):
 
     q = random.choice(available)
     game["current_question"] = q
-    game["asked_questions"].append(q['kitob'])  # faqat kitob nomini saqlaymiz
+    game["asked_questions"].append(q['kitob'])
+    game["answered"] = False  # yangi savol uchun flagni tiklaymiz
 
     await bot.send_message(
         chat_id,
@@ -85,13 +86,15 @@ async def answer(message: types.Message):
 
     game = games[chat_id]
     question = game.get("current_question")
-    if not question:
-        return
+    if not question or game["answered"]:
+        return  # savol hali javob topgan bo‘lsa ball bermaymiz
 
     user = message.from_user.username or message.from_user.full_name
 
     if message.text.strip().lower() == question["muallif"].lower():
+        # Faqat birinchi to‘g‘ri javob bergan foydalanuvchi ball oladi
         game["players"][user] = game["players"].get(user, 0) + 1
+        game["answered"] = True
 
         # Javob xabari
         await send_text(chat_type, chat_id, message, f"✅ To‘g‘ri javob! {user} +1 ball")
@@ -99,7 +102,8 @@ async def answer(message: types.Message):
         # Reytingni ko‘rsatish
         await show_rating(chat_id)
 
-        # Keyingi savol
+        # 2 sekunddan keyin yangi savol
+        await asyncio.sleep(2)
         await send_question(chat_id)
 
 # ================== REYTING CHIQARISH ==================
@@ -140,7 +144,6 @@ async def finish_game(chat_id):
 
     ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
 
-    # Reyting
     for i, (p, b) in enumerate(ranking, start=1):
         text += f"{i}. {p} — {b} ball\n"
 
