@@ -3,7 +3,6 @@ import random
 import asyncio
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ParseMode
 
 # ================== TOKEN VA WEBHOOK ==================
 API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"
@@ -11,6 +10,7 @@ WEBHOOK_HOST = "https://muallifni-top.onrender.com"
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = WEBHOOK_HOST + WEBHOOK_PATH
 
+# ================== BOT VA DISPATCHER ==================
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
@@ -21,9 +21,8 @@ with open("savollar.json", "r", encoding="utf-8") as f:
 # ================== O'YIN HOLATI ==================
 games = {}
 
-# ================== YORDAMCHI FUNKSIYA: XABAR YUBORISH ==================
+# ================== YORDAMCHI FUNKSIYA ==================
 async def send_text(chat_type, chat_id, message_obj, text, **kwargs):
-    """Private va guruh uchun yagona xabar yuborish funksiyasi."""
     if chat_type == "private":
         await message_obj.reply(text, **kwargs)
     else:
@@ -59,14 +58,15 @@ async def send_question(chat_id):
     if not game:
         return
 
-    available = [q for q in questions if q not in game["asked_questions"]]
+    # Avvalgi savollarni kitob nomi orqali tekshirish
+    available = [q for q in questions if q['kitob'] not in game["asked_questions"]]
     if not available:
         await finish_game(chat_id)
         return
 
     q = random.choice(available)
     game["current_question"] = q
-    game["asked_questions"].append(q)
+    game["asked_questions"].append(q['kitob'])  # faqat kitob nomini saqlaymiz
 
     await bot.send_message(
         chat_id,
@@ -90,7 +90,6 @@ async def answer(message: types.Message):
 
     user = message.from_user.username or message.from_user.full_name
 
-    # To‘g‘ri javob
     if message.text.strip().lower() == question["muallif"].lower():
         game["players"][user] = game["players"].get(user, 0) + 1
 
@@ -164,17 +163,15 @@ async def on_startup(app):
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook ishga tushdi!")
 
-async def ping():
-    while True:
-        try:
-            await bot.get_me()
-        except:
-            pass
-        await asyncio.sleep(480)
+async def on_shutdown(app):
+    print("Bot sessiyasi yopilmoqda...")
+    await bot.delete_webhook()
+    await bot.close()
 
 app = web.Application()
 app.router.add_post(WEBHOOK_PATH, handle)
 app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
 
 if __name__ == "__main__":
     web.run_app(app, port=10000)
