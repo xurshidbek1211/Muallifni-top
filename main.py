@@ -3,6 +3,7 @@ import random
 import asyncio
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
+from aiogram.utils.markdown import escape_md
 
 # ================== TOKEN VA WEBHOOK ==================
 API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"
@@ -23,6 +24,7 @@ games = {}
 
 # ================== YORDAMCHI FUNKSIYA ==================
 async def send_text(chat_type, chat_id, message_obj, text, **kwargs):
+    text = escape_md(text)  # Markdown belgilarini xavfsizlashtirish
     if chat_type == "private":
         await message_obj.reply(text, **kwargs)
     else:
@@ -35,22 +37,27 @@ async def start(message: types.Message):
     chat_id = message.chat.id
     chat_type = message.chat.type
 
-    # Guruhda — bot admin bo'lishi shart
+    warning = ""
     if chat_type in ["group", "supergroup"]:
-        me = await bot.get_chat_member(chat_id, bot.id)
-        if me.status not in ["administrator", "creator"]:
-            await send_text(chat_type, chat_id, message, "❌ Bot guruhda *admin* bo‘lishi kerak!", parse_mode="Markdown")
-            return
+        try:
+            me = await bot.get_chat_member(chat_id, bot.id)
+            if me.status not in ["administrator", "creator"]:
+                warning = "❌ Bot guruhda admin emas, ba’zi funksiyalar ishlamasligi mumkin!"
+        except:
+            warning = "❌ Bot guruhda admin ekanligini tekshirib bo‘lmadi!"
 
-    # O‘yinning holatini yaratish
     games[chat_id] = {
         "players": {},
         "current_question": None,
         "asked_questions": [],
-        "answered": False  # birinchi javob uchun flag
+        "answered": False
     }
 
-    await send_text(chat_type, chat_id, message, "🎉 *Muallifni top* o‘yini boshlandi!\nSavollar yuborilmoqda...", parse_mode="Markdown")
+    text = "🎉 *Muallifni top* o‘yini boshlandi!\nSavollar yuborilmoqda..."
+    if warning:
+        text = warning + "\n\n" + text
+
+    await send_text(chat_type, chat_id, message, text, parse_mode="Markdown")
     await send_question(chat_id)
 
 # ================== SAVOL YUBORISH ==================
@@ -67,11 +74,11 @@ async def send_question(chat_id):
     q = random.choice(available)
     game["current_question"] = q
     game["asked_questions"].append(q['kitob'])
-    game["answered"] = False  # yangi savol uchun flagni tiklaymiz
+    game["answered"] = False
 
     await bot.send_message(
         chat_id,
-        f"📘 *{q['kitob']}*\nBu kitobni kim yozgan?",
+        f"📘 *{escape_md(q['kitob'])}*\nBu kitobni kim yozgan?",
         parse_mode="Markdown"
     )
 
@@ -87,22 +94,16 @@ async def answer(message: types.Message):
     game = games[chat_id]
     question = game.get("current_question")
     if not question or game["answered"]:
-        return  # savol hali javob topgan bo‘lsa ball bermaymiz
+        return
 
     user = message.from_user.username or message.from_user.full_name
 
     if message.text.strip().lower() == question["muallif"].lower():
-        # Faqat birinchi to‘g‘ri javob bergan foydalanuvchi ball oladi
         game["players"][user] = game["players"].get(user, 0) + 1
         game["answered"] = True
 
-        # Javob xabari
-        await send_text(chat_type, chat_id, message, f"✅ To‘g‘ri javob! {user} +1 ball")
-
-        # Reytingni ko‘rsatish
+        await send_text(chat_type, chat_id, message, f"✅ To‘g‘ri javob! {user} +1 ball", parse_mode="Markdown")
         await show_rating(chat_id)
-
-        # 2 sekunddan keyin yangi savol
         await asyncio.sleep(2)
         await send_question(chat_id)
 
@@ -119,7 +120,7 @@ async def show_rating(chat_id):
     ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
     text = "📊 *Joriy reyting:*\n\n"
     for i, (p, b) in enumerate(ranking, start=1):
-        text += f"{i}. {p} — {b} ball\n"
+        text += f"{i}. {escape_md(p)} — {b} ball\n"
 
     await bot.send_message(chat_id, text, parse_mode="Markdown")
 
@@ -145,10 +146,10 @@ async def finish_game(chat_id):
     ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
 
     for i, (p, b) in enumerate(ranking, start=1):
-        text += f"{i}. {p} — {b} ball\n"
+        text += f"{i}. {escape_md(p)} — {b} ball\n"
 
     winner, points = ranking[0]
-    text += f"\n🎉 *G‘olib: {winner}!* ({points} ball)"
+    text += f"\n🎉 *G‘olib: {escape_md(winner)}!* ({points} ball)"
 
     await bot.send_message(chat_id, text, parse_mode="Markdown")
     del games[chat_id]
@@ -169,7 +170,7 @@ async def on_startup(app):
 async def on_shutdown(app):
     print("Bot sessiyasi yopilmoqda...")
     await bot.delete_webhook()
-    await bot.close()
+    await bot.session.close()
 
 app = web.Application()
 app.router.add_post(WEBHOOK_PATH, handle)
