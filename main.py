@@ -1,28 +1,27 @@
 import json
 import random
 import asyncio
-import os
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ParseMode, ReplyKeyboardMarkup, KeyboardButton
 
-# ------------------- CONFIG ------------------- #
-API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"  # Bot token
-WEBHOOK_HOST = "https://muallifni-top.onrender.com"              # Sizning Render URL
+# ================== TOKEN VA WEBHOOK ==================
+API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"
+WEBHOOK_HOST = "https://muallifni-top.onrender.com"
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = WEBHOOK_HOST + WEBHOOK_PATH
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ------------------- SAVOLLAR ------------------- #
+# ================== SAVOLLARNI YUKLASH ==================
 with open("savollar.json", "r", encoding="utf-8") as f:
     questions = json.load(f)
 
-# ------------------- O'YIN HOLATI ------------------- #
+# ================== O'YIN HOLATI ==================
 games = {}
 
-# Savol limitini tanlash klaviaturasi
+# Savol sonini tanlash klaviaturasi
 question_limit_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton("5 ta"), KeyboardButton("10 ta")],
@@ -32,11 +31,20 @@ question_limit_kb = ReplyKeyboardMarkup(
     one_time_keyboard=True
 )
 
-# ------------------- START KOMANDASI ------------------- #
+# ================== START KOMANDASI ==================
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     chat_id = message.chat.id
+    chat_type = message.chat.type
 
+    # Guruhda bot adminligini tekshirish
+    if chat_type in ["group", "supergroup"]:
+        chat_member = await bot.get_chat_member(chat_id, bot.id)
+        if chat_member.status not in ["administrator", "creator"]:
+            await message.reply("❌ Guruhda botni admin qilib tayinlang, shunda o‘yin ishlaydi!")
+            return
+
+    # O'yin boshlash
     games[chat_id] = {
         "players": {},
         "limit": None,
@@ -52,7 +60,7 @@ async def start(message: types.Message):
         parse_mode=ParseMode.MARKDOWN
     )
 
-# ------------------- LIMIT TANLASH ------------------- #
+# ================== SAVOL LIMITINI TANLASH ==================
 @dp.message_handler(lambda msg: msg.text in ["5 ta", "10 ta", "15 ta", "20 ta"])
 async def set_limit(message: types.Message):
     chat_id = message.chat.id
@@ -67,7 +75,7 @@ async def set_limit(message: types.Message):
     )
     await send_question(chat_id)
 
-# ------------------- SAVOL YUBORISH ------------------- #
+# ================== SAVOL YUBORISH ==================
 async def send_question(chat_id):
     game = games[chat_id]
 
@@ -91,7 +99,7 @@ async def send_question(chat_id):
         parse_mode=ParseMode.MARKDOWN
     )
 
-# ------------------- JAVOB TEKSHIRISH ------------------- #
+# ================== JAVOB TEKSHIRISH ==================
 @dp.message_handler()
 async def check_answer(message: types.Message):
     chat_id = message.chat.id
@@ -110,7 +118,7 @@ async def check_answer(message: types.Message):
         await message.reply(f"✅ To‘g‘ri! {user} +1 ball")
         await send_question(chat_id)
 
-# ------------------- O‘YINNI TUGATISH ------------------- #
+# ================== O‘YIN TUGASHI VA TABRIK ==================
 async def finish_game(chat_id):
     game = games[chat_id]
 
@@ -127,7 +135,6 @@ async def finish_game(chat_id):
     for i, (p, b) in enumerate(ranking, start=1):
         text += f"{i}. {p} — {b} ball\n"
 
-    # G‘OLIB TABRIK
     text += (
         f"\n🎉 *TABRIKLAYMIZ, {winner}!* 🎉\n"
         "Siz o‘yin davomida eng ko‘p to‘g‘ri javob berdingiz va g‘olib bo‘ldingiz!\n"
@@ -137,33 +144,35 @@ async def finish_game(chat_id):
     await bot.send_message(chat_id, text, parse_mode=ParseMode.MARKDOWN)
     del games[chat_id]
 
-# ------------------- WEBHOOK SERVER ------------------- #
+# ================== WEBHOOK SERVER ==================
 async def handle(request):
     data = await request.json()
     update = types.Update(**data)
     await dp.process_update(update)
     return web.Response()
 
-async def on_startup_tasks(app):
+async def on_startup(app):
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook ishga tushdi!")
-    # Bot uxlamasligi uchun fon ping
-    app.loop.create_task(ping())
 
-# ------------------- BOT UXLAMASLIGI ------------------- #
+# ================== BOT UXLAMASLIGI ==================
 async def ping():
     while True:
         try:
             await bot.get_me()
         except:
             pass
-        await asyncio.sleep(480)  # 8 daqiqa
+        await asyncio.sleep(480)  # har 8 daqiqa
 
-# ------------------- RUN ------------------- #
+def start_background_tasks(app):
+    app.loop.create_task(ping())
+
+# ================== APP ==================
 app = web.Application()
 app.router.add_post(WEBHOOK_PATH, handle)
-app.on_startup.append(on_startup_tasks)
+app.on_startup.append(on_startup)
+app.on_startup.append(start_background_tasks)
 
-PORT = int(os.environ.get("PORT", 10000))
-web.run_app(app, port=PORT)
+if __name__ == "__main__":
+    web.run_app(app, port=10000)
