@@ -1,30 +1,29 @@
 import json
 import random
 import asyncio
+import os
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ParseMode, ReplyKeyboardMarkup, KeyboardButton
 
-# BOT TOKENINI shuyerga yozing
-API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"
-
-# Webhook sozlamalari
-WEBHOOK_HOST = "https://muallifni-top.onrender.com"  # Render URL
+# ------------------- CONFIG ------------------- #
+API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"  # Bot token
+WEBHOOK_HOST = "https://muallifni-top.onrender.com"              # Sizning Render URL
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = WEBHOOK_HOST + WEBHOOK_PATH
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Savollarni yuklash
+# ------------------- SAVOLLAR ------------------- #
 with open("savollar.json", "r", encoding="utf-8") as f:
     questions = json.load(f)
 
-# O'yin holati
+# ------------------- O'YIN HOLATI ------------------- #
 games = {}
 
-# Savol sonini tanlash klaviaturasi
-game_setup_kb = ReplyKeyboardMarkup(
+# Savol limitini tanlash klaviaturasi
+question_limit_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton("5 ta"), KeyboardButton("10 ta")],
         [KeyboardButton("15 ta"), KeyboardButton("20 ta")]
@@ -33,47 +32,42 @@ game_setup_kb = ReplyKeyboardMarkup(
     one_time_keyboard=True
 )
 
-# --- START --- #
+# ------------------- START KOMANDASI ------------------- #
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     chat_id = message.chat.id
-    chat_type = message.chat.type
 
-    # Guruhda bot admin ekanligini tekshirish
-    if chat_type in ["group", "supergroup"]:
-        bot_member = await bot.get_chat_member(chat_id, bot.id)
-        if bot_member.status not in ["administrator", "creator"]:
-            await message.reply("❌ Iltimos, o‘yinni ishlatish uchun botni guruhda admin qilib tayinlang.")
-            return
-
-    # O‘yin holatini yaratish
     games[chat_id] = {
         "players": {},
         "limit": None,
         "count": 0,
         "current_question": None,
-        "asked_questions": [],
+        "asked_questions": []
     }
 
     await message.reply(
         "🎉 *Muallifni top* o‘yiniga xush kelibsiz!\n\n"
         "✳ O‘yin necha savoldan iborat bo‘lsin?",
-        reply_markup=game_setup_kb,
+        reply_markup=question_limit_kb,
         parse_mode=ParseMode.MARKDOWN
     )
 
-# --- SAVOL LIMITINI TANLASH --- #
+# ------------------- LIMIT TANLASH ------------------- #
 @dp.message_handler(lambda msg: msg.text in ["5 ta", "10 ta", "15 ta", "20 ta"])
 async def set_limit(message: types.Message):
     chat_id = message.chat.id
     if chat_id not in games:
         return
+    
     limit = int(message.text.split()[0])
     games[chat_id]["limit"] = limit
-    await message.reply(f"✅ O‘yin {limit} ta savoldan iborat. Savol yuborilyapti...")
+
+    await message.reply(
+        f"✅ O‘yin {limit} ta savoldan iborat.\n⏳ Birinchi savol yuborilyapti..."
+    )
     await send_question(chat_id)
 
-# --- SAVOL YUBORISH --- #
+# ------------------- SAVOL YUBORISH ------------------- #
 async def send_question(chat_id):
     game = games[chat_id]
 
@@ -97,12 +91,13 @@ async def send_question(chat_id):
         parse_mode=ParseMode.MARKDOWN
     )
 
-# --- JAVOB TEKSHIRISH --- #
+# ------------------- JAVOB TEKSHIRISH ------------------- #
 @dp.message_handler()
 async def check_answer(message: types.Message):
     chat_id = message.chat.id
     if chat_id not in games:
         return
+
     game = games[chat_id]
     question = game["current_question"]
     if not question:
@@ -115,7 +110,7 @@ async def check_answer(message: types.Message):
         await message.reply(f"✅ To‘g‘ri! {user} +1 ball")
         await send_question(chat_id)
 
-# --- O‘YIN YAKUNI --- #
+# ------------------- O‘YINNI TUGATISH ------------------- #
 async def finish_game(chat_id):
     game = games[chat_id]
 
@@ -127,10 +122,12 @@ async def finish_game(chat_id):
     ranking = sorted(game["players"].items(), key=lambda x: x[1], reverse=True)
     winner, points = ranking[0]
 
-    text = "🏆 *O‘yin yakunlandi!*\n\n🏅 Reyting:\n"
+    text = "🏆 *O‘yin yakunlandi!*\n\n"
+    text += "🏅 Reyting:\n"
     for i, (p, b) in enumerate(ranking, start=1):
         text += f"{i}. {p} — {b} ball\n"
 
+    # G‘OLIB TABRIK
     text += (
         f"\n🎉 *TABRIKLAYMIZ, {winner}!* 🎉\n"
         "Siz o‘yin davomida eng ko‘p to‘g‘ri javob berdingiz va g‘olib bo‘ldingiz!\n"
@@ -140,19 +137,21 @@ async def finish_game(chat_id):
     await bot.send_message(chat_id, text, parse_mode=ParseMode.MARKDOWN)
     del games[chat_id]
 
-# --- WEBHOOK SERVER --- #
+# ------------------- WEBHOOK SERVER ------------------- #
 async def handle(request):
     data = await request.json()
     update = types.Update(**data)
     await dp.process_update(update)
     return web.Response()
 
-async def on_startup(app):
+async def on_startup_tasks(app):
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook ishga tushdi!")
+    # Bot uxlamasligi uchun fon ping
+    app.loop.create_task(ping())
 
-# BOT UXLAMASLIGI — har 8 daqiqa ping
+# ------------------- BOT UXLAMASLIGI ------------------- #
 async def ping():
     while True:
         try:
@@ -161,13 +160,10 @@ async def ping():
             pass
         await asyncio.sleep(480)  # 8 daqiqa
 
-def start_background_tasks(app):
-    app.loop.create_task(ping())
-
+# ------------------- RUN ------------------- #
 app = web.Application()
 app.router.add_post(WEBHOOK_PATH, handle)
-app.on_startup.append(on_startup)
-app.on_startup.append(start_background_tasks)
+app.on_startup.append(on_startup_tasks)
 
-if __name__ == "__main__":
-    web.run_app(app, port=10000)
+PORT = int(os.environ.get("PORT", 10000))
+web.run_app(app, port=PORT)
