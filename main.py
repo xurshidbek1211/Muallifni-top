@@ -21,6 +21,14 @@ with open("savollar.json", "r", encoding="utf-8") as f:
 # ================== O'YIN HOLATI ==================
 games = {}
 
+# ================== YORDAMCHI FUNKSIYA: XABAR YUBORISH ==================
+async def send_text(chat_type, chat_id, message_obj, text, **kwargs):
+    """Private va guruh uchun yagona xabar yuborish funksiyasi."""
+    if chat_type == "private":
+        await message_obj.reply(text, **kwargs)
+    else:
+        await bot.send_message(chat_id, text, **kwargs)
+
 # ================== START ==================
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
@@ -28,23 +36,21 @@ async def start(message: types.Message):
     chat_id = message.chat.id
     chat_type = message.chat.type
 
-    send = bot.send_message if chat_type != "private" else message.reply
-
     # Guruhda — bot admin bo'lishi shart
     if chat_type in ["group", "supergroup"]:
         me = await bot.get_chat_member(chat_id, bot.id)
         if me.status not in ["administrator", "creator"]:
-            await send("❌ Bot guruhda *admin* bo‘lishi kerak!", parse_mode="Markdown")
+            await send_text(chat_type, chat_id, message, "❌ Bot guruhda *admin* bo‘lishi kerak!", parse_mode="Markdown")
             return
 
-    # O‘yin boshlanadi
+    # O‘yinning holatini yaratish
     games[chat_id] = {
         "players": {},
         "current_question": None,
         "asked_questions": []
     }
 
-    await send("🎉 *Muallifni top* o‘yini boshlandi!\nSavollar yuborilmoqda...", parse_mode="Markdown")
+    await send_text(chat_type, chat_id, message, "🎉 *Muallifni top* o‘yini boshlandi!\nSavollar yuborilmoqda...", parse_mode="Markdown")
     await send_question(chat_id)
 
 # ================== SAVOL YUBORISH ==================
@@ -72,12 +78,13 @@ async def send_question(chat_id):
 @dp.message_handler()
 async def answer(message: types.Message):
     chat_id = message.chat.id
+    chat_type = message.chat.type
 
     if chat_id not in games:
         return
 
     game = games[chat_id]
-    question = game["current_question"]
+    question = game.get("current_question")
     if not question:
         return
 
@@ -87,12 +94,10 @@ async def answer(message: types.Message):
     if message.text.strip().lower() == question["muallif"].lower():
         game["players"][user] = game["players"].get(user, 0) + 1
 
-        await bot.send_message(
-            chat_id,
-            f"✅ To‘g‘ri javob! {user} +1 ball"
-        )
+        # Javob xabari
+        await send_text(chat_type, chat_id, message, f"✅ To‘g‘ri javob! {user} +1 ball")
 
-        # Har javobdan keyin reyting ko‘rsatish
+        # Reytingni ko‘rsatish
         await show_rating(chat_id)
 
         # Keyingi savol
@@ -100,14 +105,16 @@ async def answer(message: types.Message):
 
 # ================== REYTING CHIQARISH ==================
 async def show_rating(chat_id):
-    players = games[chat_id]["players"]
+    game = games.get(chat_id)
+    if not game:
+        return
 
+    players = game["players"]
     if not players:
         return
 
     ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
     text = "📊 *Joriy reyting:*\n\n"
-
     for i, (p, b) in enumerate(ranking, start=1):
         text += f"{i}. {p} — {b} ball\n"
 
