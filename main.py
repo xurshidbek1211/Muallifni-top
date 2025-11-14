@@ -124,8 +124,11 @@ async def check_answer(message: types.Message):
             text += f"{i}. {p} — {b} ball\n"
         await message.reply(text)
 
-        # Keyingi savol
-        await send_question(chat_id)
+        # Agar savol limiti tugagan bo'lsa, o'yinni tugatish
+        if game["count"] >= game["limit"]:
+            await finish_game(chat_id)
+        else:
+            await send_question(chat_id)
 
 # ================== O‘YIN TUGASHI VA TABRIK ==================
 async def finish_game(chat_id):
