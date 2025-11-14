@@ -116,7 +116,15 @@ async def check_answer(message: types.Message):
 
     if message.text.strip().lower() == question["muallif"].lower():
         game["players"][user] = game["players"].get(user, 0) + 1
-        await message.reply(f"✅ To‘g‘ri! {user} +1 ball")
+
+        # Har bir to'g'ri javobdan keyin reytingni ko'rsatish
+        ranking = sorted(game["players"].items(), key=lambda x: x[1], reverse=True)
+        text = f"✅ To‘g‘ri! {user} +1 ball\n\n🏅 Hozirgi natijalar:\n"
+        for i, (p, b) in enumerate(ranking, start=1):
+            text += f"{i}. {p} — {b} ball\n"
+        await message.reply(text)
+
+        # Keyingi savol
         await send_question(chat_id)
 
 # ================== O‘YIN TUGASHI VA TABRIK ==================
