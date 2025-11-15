@@ -38,7 +38,7 @@ async def start(message: types.Message):
         except:
             warning = "❌ Bot guruhda admin ekanligini tekshirib bo‘lmadi!"
 
-    # O‘yin holatini qayta yaratish
+    # O‘yin holatini yaratish
     games[chat_id] = {
         "players": {},
         "current_question": None,
@@ -153,12 +153,15 @@ async def finish_game(chat_id):
 
 # ================== WEBHOOK ==================
 async def handle(request):
+    Bot.set_current(bot)  # <<< MAJBURIY
     data = await request.json()
     update = types.Update(**data)
     await dp.process_update(update)
     return web.Response()
 
 async def on_startup(app):
+    Bot.set_current(bot)  # <<< MAJBURIY
+    await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook READY!")
 
@@ -167,6 +170,7 @@ async def on_shutdown(app):
     await bot.delete_webhook()
     await bot.session.close()
 
+# ================== APP ==================
 app = web.Application()
 app.router.add_post(WEBHOOK_PATH, handle)
 app.on_startup.append(on_startup)
