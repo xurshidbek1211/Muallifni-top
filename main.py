@@ -21,21 +21,18 @@ with open("savollar.json", "r", encoding="utf-8") as f:
 # ================== O'YIN HOLATI ==================
 games = {}
 
-# ================== START ==================
-@dp.message_handler(commands=["start"])
-async def start(message: types.Message):
+# ================== SHAXSIY ID ==================
+PERSONAL_ID = 1899194677  # sening Telegram ID
+
+# ================== START (/goo) ==================
+@dp.message_handler(commands=["goo"])
+async def start_game(message: types.Message):
     chat_id = message.chat.id
     chat_type = message.chat.type
 
-    warning = ""
-    if chat_type in ["group", "supergroup"]:
-        try:
-            me = await bot.get_me()
-            bot_member = await bot.get_chat_member(chat_id, me.id)
-            if bot_member.status not in ["administrator", "creator"]:
-                warning = "❌ Bot guruhda admin emas, ba'zi funksiyalar ishlamasligi mumkin!"
-        except:
-            warning = "❌ Bot guruhda admin ekanligini tekshirib bo‘lmadi!"
+    if chat_type not in ["group", "supergroup"]:
+        await bot.send_message(chat_id, "❌ O‘yin faqat guruhda ishlaydi!")
+        return
 
     # O‘yin holatini yaratish
     games[chat_id] = {
@@ -45,12 +42,14 @@ async def start(message: types.Message):
         "answered": False
     }
 
-    text = "🎉 *Muallifni top* o‘yini boshlandi!\nSavollar tez orada yuboriladi."
-    if warning:
-        text = warning + "\n\n" + text
-
+    text = (
+        "🎉 *Muallifni top* o‘yini boshlandi!\n"
+        "Savollar yuborilmoqda...\n\n"
+        "ℹ️ Bot /goo bilan ishga tushadi\n"
+        "Taklif va shikoyatlar: @xurshidbek_1211"
+    )
     await bot.send_message(chat_id, text)
-    asyncio.create_task(send_question(chat_id))  # fon rejimida savol yuborish
+    asyncio.create_task(send_question(chat_id))
 
 # ================== SAVOL YUBORISH ==================
 async def send_question(chat_id):
@@ -98,7 +97,6 @@ async def answer(message: types.Message):
         await bot.send_message(chat_id, f"✅ To‘g‘ri javob! *{user}* +1 ball")
         await show_rating(chat_id)
 
-        # yangi savolni fon rejimida yuborish
         asyncio.create_task(send_question(chat_id))
 
 # ================== REYTING ==================
@@ -120,7 +118,7 @@ async def show_rating(chat_id):
 
 # ================== STOP ==================
 @dp.message_handler(commands=["stop"])
-async def stop(message: types.Message):
+async def stop_game(message: types.Message):
     await finish_game(message.chat.id)
 
 async def finish_game(chat_id):
@@ -145,13 +143,13 @@ async def finish_game(chat_id):
     await bot.send_message(chat_id, text)
     del games[chat_id]
 
-# ================== FON XABAR (har 8 daqiqa) ==================
-async def periodic_message(chat_id, interval=480):  # 480 soniya = 8 daqiqa
+# ================== SHAXSIY FON XABAR (har 8 daqiqa) ==================
+async def send_periodic_personal_message(interval=480):
     while True:
         try:
-            await bot.send_message(chat_id, "⏰ 8 daqiqa o‘tib xabar!")
+            await bot.send_message(PERSONAL_ID, "⏰ 8 daqiqa o‘tib xabar!")
         except Exception as e:
-            print(f"Xabar yuborishda xato: {e}")
+            print(f"Shaxsiy xabar yuborishda xato: {e}")
         await asyncio.sleep(interval)
 
 # ================== WEBHOOK ==================
@@ -168,13 +166,11 @@ async def on_startup(app):
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook READY!")
 
-    # FON XABARni boshlash (guruh chat ID)
-    CHAT_ID = 1686713801
-    asyncio.create_task(periodic_message(CHAT_ID, interval=480))
+    # Shaxsiy fon xabarni ishga tushirish
+    asyncio.create_task(send_periodic_personal_message())
 
 async def on_shutdown(app):
     print("Bot stopped")
-    await bot.delete_webhook()
     session = await bot.get_session()
     await session.close()
 
