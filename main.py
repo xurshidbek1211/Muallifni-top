@@ -1,184 +1,161 @@
+import logging
+import os
 import json
 import random
 import asyncio
-from aiohttp import web
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from fastapi import FastAPI, Request
+from aiogram.utils.markdown import escape_md
 
-# ================== TOKEN VA WEBHOOK ==================
-API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"
-WEBHOOK_HOST = "https://muallifni-top.onrender.com"
-WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = WEBHOOK_HOST + WEBHOOK_PATH
+# --- Atrof-muhit sozlamalari ---
+API_TOKEN = "SENING_BOT_TOKENING"  # O'zing tokenni qo'y
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
+WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
+WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
-# ================== BOT VA DISPATCHER ==================
+ADMIN_ID = 1899194677  # Shaxsiy ID
+RUXSAT_ETILGANLAR = [ADMIN_ID]
+
 bot = Bot(token=API_TOKEN, parse_mode="Markdown")
-dp = Dispatcher(bot)
+dp = Dispatcher(bot, storage=MemoryStorage())
 
-# ================== SAVOLLARNI YUKLASH ==================
-with open("savollar.json", "r", encoding="utf-8") as f:
-    questions = json.load(f)
+Bot.set_current(bot)
+Dispatcher.set_current(dp)
 
-# ================== O'YIN HOLATI ==================
-games = {}
+app = FastAPI()
+logging.basicConfig(level=logging.INFO)
 
-# ================== SHAXSIY ID ==================
-PERSONAL_ID = 1899194677  # sening Telegram ID
+SAVOLLAR_FILE = "savollar.json"
+SCORE_FILE = "user_scores.json"
+STATE_FILE = "user_states.json"
 
-# ================== START (/goo) ==================
+# --- JSON fayllarni yuklash/saqlash ---
+def load_json(filename):
+    if os.path.exists(filename):
+        with open(filename, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_json(filename, data):
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# --- Javoblarni normallashtirish ---
+def normalize_answer(text):
+    return text.lower().strip()
+
+# --- Bot adminligini tekshirish (faqat guruhda) ---
+async def check_bot_admin(message: types.Message) -> bool:
+    if message.chat.type == "private":
+        return True
+    try:
+        bot_member = await bot.get_chat_member(message.chat.id, (await bot.get_me()).id)
+        return bot_member.is_chat_admin()
+    except Exception as e:
+        logging.error(f"Bot adminligini tekshirishda xato: {e}")
+        return False
+
+# --- Yangi savol yuborish ---
+async def send_new_question(chat_id):
+    questions = load_json(SAVOLLAR_FILE)
+    if not questions:
+        await bot.send_message(chat_id, "❌ Savollar mavjud emas.")
+        return
+    question = random.choice(questions)
+    states = load_json(STATE_FILE)
+    states[str(chat_id)] = {
+        "current": question,
+        "answered_by": None
+    }
+    save_json(STATE_FILE, states)
+    await bot.send_message(chat_id, escape_md(f"📘 {question['kitob']}\nBu kitobni kim yozgan?"))
+
+# --- /goo --- start game
 @dp.message_handler(commands=["goo"])
 async def start_game(message: types.Message):
+    if not await check_bot_admin(message):
+        await message.answer("❌ Botni admin qiling!")
+        return
+
     chat_id = message.chat.id
-    chat_type = message.chat.type
+    await send_new_question(chat_id)
 
-    if chat_type not in ["group", "supergroup"]:
-        await bot.send_message(chat_id, "❌ O‘yin faqat guruhda ishlaydi!")
-        return
-
-    # O‘yin holatini yaratish
-    games[chat_id] = {
-        "players": {},
-        "current_question": None,
-        "asked_questions": [],
-        "answered": False
-    }
-
-    text = (
-        "🎉 *Muallifni top* o‘yini boshlandi!\n"
-        "Savollar yuborilmoqda...\n\n"
-        "ℹ️ Bot /goo bilan ishga tushadi\n"
-        "Taklif va shikoyatlar: @xurshidbek_1211"
-    )
-    await bot.send_message(chat_id, text)
-    asyncio.create_task(send_question(chat_id))
-
-# ================== SAVOL YUBORISH ==================
-async def send_question(chat_id):
-    game = games.get(chat_id)
-    if not game:
-        return
-
-    available = [q for q in questions if q['kitob'] not in game["asked_questions"]]
-    if not available:
-        await finish_game(chat_id)
-        return
-
-    q = random.choice(available)
-    game["current_question"] = q
-    game["asked_questions"].append(q['kitob'])
-    game["answered"] = False
-
-    try:
-        await bot.send_message(
-            chat_id,
-            f"📘 *{q['kitob']}*\nBu kitobni kim yozgan?"
-        )
-    except Exception as e:
-        print(f"Xabar yuborishda xato: {e}")
-
-# ================== JAVOB TEKSHIRISH ==================
+# --- Javoblarni tekshirish ---
 @dp.message_handler()
-async def answer(message: types.Message):
-    chat_id = message.chat.id
-    if chat_id not in games:
+async def check_answer(message: types.Message):
+    if not await check_bot_admin(message):
         return
 
-    game = games[chat_id]
-    question = game.get("current_question")
-    if not question or game["answered"]:
+    chat_id = str(message.chat.id)
+    user_id = str(message.from_user.id)
+    states = load_json(STATE_FILE)
+
+    if chat_id not in states:
+        return
+    state = states[chat_id]
+    if "current" not in state or state.get("answered_by") is not None:
         return
 
-    user = message.from_user.username or message.from_user.full_name
-    text = message.text.strip().lower()
+    user_answer = normalize_answer(message.text)
+    correct_answer = normalize_answer(state["current"]["muallif"])
 
-    if text == question["muallif"].lower():
-        game["players"][user] = game["players"].get(user, 0) + 1
-        game["answered"] = True
+    if user_answer == correct_answer:
+        state["answered_by"] = user_id
+        states[chat_id] = state
+        save_json(STATE_FILE, states)
 
-        await bot.send_message(chat_id, f"✅ To‘g‘ri javob! *{user}* +1 ball")
-        await show_rating(chat_id)
+        scores = load_json(SCORE_FILE)
+        if chat_id not in scores:
+            scores[chat_id] = {}
+        scores[chat_id][user_id] = scores[chat_id].get(user_id, 0) + 1
+        save_json(SCORE_FILE, scores)
 
-        asyncio.create_task(send_question(chat_id))
+        # Top 10 reyting
+        top = sorted(scores[chat_id].items(), key=lambda x: x[1], reverse=True)[:10]
+        reyting = ""
+        for i, (uid, ball) in enumerate(top):
+            try:
+                user = await bot.get_chat(int(uid))
+                name = user.first_name
+            except:
+                name = "👤 Nomaʼlum"
+            reyting += f"{i+1}. {name} - {ball} ball\n"
 
-# ================== REYTING ==================
-async def show_rating(chat_id):
-    game = games.get(chat_id)
-    if not game:
-        return
+        await message.answer(
+            f"🎯 To‘g‘ri javob: {state['current']['muallif']}\n"
+            f"🎉 {message.from_user.full_name} +1 ball oldi!\n\n"
+            f"🏆 Guruhdagi eng yaxshi 10 ta foydalanuvchi:\n{reyting}"
+        )
 
-    players = game["players"]
-    if not players:
-        return
+        await send_new_question(message.chat.id)
 
-    ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
-    text = "📊 *Joriy reyting:*\n\n"
-    for i, (p, b) in enumerate(ranking, start=1):
-        text += f"{i}. {p} — {b} ball\n"
+# --- /ball ---
+@dp.message_handler(commands=["ball"])
+async def show_score(message: types.Message):
+    scores = load_json(SCORE_FILE)
+    chat_id = str(message.chat.id)
+    user_id = str(message.from_user.id)
+    chat_scores = scores.get(chat_id, {})
+    user_score = chat_scores.get(user_id, 0)
+    await message.answer(f"📊 Sizning guruhdagi umumiy balingiz: {user_score}")
 
-    await bot.send_message(chat_id, text)
-
-# ================== STOP ==================
-@dp.message_handler(commands=["stop"])
-async def stop_game(message: types.Message):
-    await finish_game(message.chat.id)
-
-async def finish_game(chat_id):
-    if chat_id not in games:
-        return
-
-    players = games[chat_id]["players"]
-    text = "🏆 *O‘yin tugadi!*\n\n"
-
-    if not players:
-        text += "❗ Hech kim javob bera olmadi."
-        await bot.send_message(chat_id, text)
-        del games[chat_id]
-        return
-
-    ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
-    for i, (p, b) in enumerate(ranking, start=1):
-        text += f"{i}. {p} — {b} ball\n"
-
-    winner, points = ranking[0]
-    text += f"\n🎉 *G‘olib: {winner}!* ({points} ball)"
-    await bot.send_message(chat_id, text)
-    del games[chat_id]
-
-# ================== SHAXSIY FON XABAR (har 8 daqiqa) ==================
-async def send_periodic_personal_message(interval=480):
-    while True:
-        try:
-            await bot.send_message(PERSONAL_ID, "⏰ 8 daqiqa o‘tib xabar!")
-        except Exception as e:
-            print(f"Shaxsiy xabar yuborishda xato: {e}")
-        await asyncio.sleep(interval)
-
-# ================== WEBHOOK ==================
-async def handle(request):
-    Bot.set_current(bot)
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.process_update(update)
-    return web.Response()
-
-async def on_startup(app):
-    Bot.set_current(bot)
-    await bot.delete_webhook()
+# --- Webhook sozlash ---
+@app.on_event("startup")
+async def on_startup():
+    logging.info("Bot ishga tushmoqda...")
     await bot.set_webhook(WEBHOOK_URL)
-    print("Webhook READY!")
+    logging.info(f"✅ Webhook o‘rnatildi: {WEBHOOK_URL}")
 
-    # Shaxsiy fon xabarni ishga tushirish
-    asyncio.create_task(send_periodic_personal_message())
+# --- Webhookni qabul qilish ---
+@app.post(WEBHOOK_PATH)
+async def process_webhook(request: Request):
+    data = await request.body()
+    update = types.Update(**json.loads(data))
+    await dp.process_update(update)
+    return {"status": "ok"}
 
-async def on_shutdown(app):
-    print("Bot stopped")
-    session = await bot.get_session()
-    await session.close()
-
-# ================== APP ==================
-app = web.Application()
-app.router.add_post(WEBHOOK_PATH, handle)
-app.on_startup.append(on_startup)
-app.on_shutdown.append(on_shutdown)
-
-if __name__ == "__main__":
-    web.run_app(app, port=10000)
+@app.get("/")
+async def root():
+    return {"status": "Bot tirik va ishlayapti ✅"}
