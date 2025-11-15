@@ -27,7 +27,6 @@ async def start(message: types.Message):
     chat_id = message.chat.id
     chat_type = message.chat.type
 
-    # ADMIN TEKSHIRISH
     warning = ""
     if chat_type in ["group", "supergroup"]:
         try:
@@ -51,7 +50,7 @@ async def start(message: types.Message):
         text = warning + "\n\n" + text
 
     await message.reply(text)
-    await send_question(chat_id)
+    asyncio.create_task(send_question(chat_id))  # fon rejimida savol yuborish
 
 # ================== SAVOL YUBORISH ==================
 async def send_question(chat_id):
@@ -74,20 +73,18 @@ async def send_question(chat_id):
             chat_id,
             f"📘 *{q['kitob']}*\nBu kitobni kim yozgan?"
         )
-    except:
-        pass
+    except Exception as e:
+        print(f"Xabar yuborishda xato: {e}")
 
 # ================== JAVOB TEKSHIRISH ==================
 @dp.message_handler()
 async def answer(message: types.Message):
     chat_id = message.chat.id
-
     if chat_id not in games:
         return
 
     game = games[chat_id]
     question = game.get("current_question")
-
     if not question or game["answered"]:
         return
 
@@ -101,8 +98,8 @@ async def answer(message: types.Message):
         await message.reply(f"✅ To‘g‘ri javob! *{user}* +1 ball")
         await show_rating(chat_id)
 
-        await asyncio.sleep(2)
-        await send_question(chat_id)
+        # yangi savolni fon rejimida yuborish
+        asyncio.create_task(send_question(chat_id))
 
 # ================== REYTING ==================
 async def show_rating(chat_id):
@@ -115,7 +112,6 @@ async def show_rating(chat_id):
         return
 
     ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
-
     text = "📊 *Joriy reyting:*\n\n"
     for i, (p, b) in enumerate(ranking, start=1):
         text += f"{i}. {p} — {b} ball\n"
@@ -141,34 +137,46 @@ async def finish_game(chat_id):
         return
 
     ranking = sorted(players.items(), key=lambda x: x[1], reverse=True)
-
     for i, (p, b) in enumerate(ranking, start=1):
         text += f"{i}. {p} — {b} ball\n"
 
     winner, points = ranking[0]
     text += f"\n🎉 *G‘olib: {winner}!* ({points} ball)"
-
     await bot.send_message(chat_id, text)
     del games[chat_id]
 
+# ================== FON XABAR (har 8 daqiqa) ==================
+async def periodic_message(chat_id, interval=480):  # 480 soniya = 8 daqiqa
+    while True:
+        try:
+            await bot.send_message(chat_id, "⏰ 8 daqiqa o‘tib xabar!")
+        except Exception as e:
+            print(f"Xabar yuborishda xato: {e}")
+        await asyncio.sleep(interval)
+
 # ================== WEBHOOK ==================
 async def handle(request):
-    Bot.set_current(bot)  # <<< MAJBURIY
+    Bot.set_current(bot)  # MAJBURIY
     data = await request.json()
     update = types.Update(**data)
     await dp.process_update(update)
     return web.Response()
 
 async def on_startup(app):
-    Bot.set_current(bot)  # <<< MAJBURIY
+    Bot.set_current(bot)  # MAJBURIY
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook READY!")
 
+    # FON XABARni boshlash (guruh chat ID)
+    CHAT_ID = 1686713801
+    asyncio.create_task(periodic_message(CHAT_ID, interval=480))
+
 async def on_shutdown(app):
     print("Bot stopped")
     await bot.delete_webhook()
-    await bot.session.close()
+    session = await bot.get_session()
+    await session.close()
 
 # ================== APP ==================
 app = web.Application()
