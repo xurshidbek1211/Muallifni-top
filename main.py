@@ -10,13 +10,13 @@ from fastapi import FastAPI, Request
 from aiogram.utils.markdown import escape_md
 
 # --- Atrof-muhit sozlamalari ---
-API_TOKEN = "SENING_BOT_TOKENING"  # O'zing tokenni qo'y
+API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"  # O'zing tokenni qo'y
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
 WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
 ADMIN_ID = 1899194677  # Shaxsiy ID
-RUXSAT_ETILGANLAR = [ADMIN_ID]
+RUXSAT_ETILGANLAR = [8460056817]
 
 bot = Bot(token=API_TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot, storage=MemoryStorage())
