@@ -49,7 +49,7 @@ async def start(message: types.Message):
     if warning:
         text = warning + "\n\n" + text
 
-    await message.reply(text)
+    await bot.send_message(chat_id, text)
     asyncio.create_task(send_question(chat_id))  # fon rejimida savol yuborish
 
 # ================== SAVOL YUBORISH ==================
@@ -95,7 +95,7 @@ async def answer(message: types.Message):
         game["players"][user] = game["players"].get(user, 0) + 1
         game["answered"] = True
 
-        await message.reply(f"✅ To‘g‘ri javob! *{user}* +1 ball")
+        await bot.send_message(chat_id, f"✅ To‘g‘ri javob! *{user}* +1 ball")
         await show_rating(chat_id)
 
         # yangi savolni fon rejimida yuborish
@@ -156,14 +156,14 @@ async def periodic_message(chat_id, interval=480):  # 480 soniya = 8 daqiqa
 
 # ================== WEBHOOK ==================
 async def handle(request):
-    Bot.set_current(bot)  # MAJBURIY
+    Bot.set_current(bot)
     data = await request.json()
     update = types.Update(**data)
     await dp.process_update(update)
     return web.Response()
 
 async def on_startup(app):
-    Bot.set_current(bot)  # MAJBURIY
+    Bot.set_current(bot)
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("Webhook READY!")
