@@ -15,9 +15,6 @@ RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
 WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
-ADMIN_ID = 1899194677  # Shaxsiy ID
-RUXSAT_ETILGANLAR = [8460056817]
-
 bot = Bot(token=API_TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot, storage=MemoryStorage())
 
@@ -46,17 +43,6 @@ def save_json(filename, data):
 def normalize_answer(text):
     return text.lower().strip()
 
-# --- Bot adminligini tekshirish (faqat guruhda) ---
-async def check_bot_admin(message: types.Message) -> bool:
-    if message.chat.type == "private":
-        return True
-    try:
-        bot_member = await bot.get_chat_member(message.chat.id, (await bot.get_me()).id)
-        return bot_member.is_chat_admin()
-    except Exception as e:
-        logging.error(f"Bot adminligini tekshirishda xato: {e}")
-        return False
-
 # --- Yangi savol yuborish ---
 async def send_new_question(chat_id):
     questions = load_json(SAVOLLAR_FILE)
@@ -75,19 +61,12 @@ async def send_new_question(chat_id):
 # --- /goo --- start game
 @dp.message_handler(commands=["goo"])
 async def start_game(message: types.Message):
-    if not await check_bot_admin(message):
-        await message.answer("❌ Botni admin qiling!")
-        return
-
     chat_id = message.chat.id
     await send_new_question(chat_id)
 
 # --- Javoblarni tekshirish ---
 @dp.message_handler()
 async def check_answer(message: types.Message):
-    if not await check_bot_admin(message):
-        return
-
     chat_id = str(message.chat.id)
     user_id = str(message.from_user.id)
     states = load_json(STATE_FILE)
