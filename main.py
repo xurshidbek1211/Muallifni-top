@@ -3,11 +3,9 @@ import os
 import json
 import random
 import asyncio
-from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from fastapi import FastAPI, Request
-from aiogram.utils.markdown import escape_md
 
 # --- Atrof-muhit sozlamalari ---
 API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"  # O'zing tokenni qo'y
@@ -43,12 +41,20 @@ def save_json(filename, data):
 def normalize_answer(text):
     return text.lower().strip()
 
+# --- Markdown belgilarini qochirish ---
+def escape_markdown(text: str) -> str:
+    escape_chars = "_*[]()~`>#+-=|{}.!$"
+    for ch in escape_chars:
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
 # --- Yangi savol yuborish ---
 async def send_new_question(chat_id):
     questions = load_json(SAVOLLAR_FILE)
     if not questions:
-        await bot.send_message(chat_id, "❌ Savollar mavjud emas.")
+        await bot.send_message(chat_id, "❌ Savollar mavjud emas.", parse_mode=None)
         return
+
     question = random.choice(questions)
     states = load_json(STATE_FILE)
     states[str(chat_id)] = {
@@ -56,7 +62,9 @@ async def send_new_question(chat_id):
         "answered_by": None
     }
     save_json(STATE_FILE, states)
-    await bot.send_message(chat_id, escape_md(f"📘 {question['kitob']}\nBu kitobni kim yozgan?"))
+
+    safe_text = escape_markdown(f"📘 {question['kitob']}\nBu kitobni kim yozgan?")
+    await bot.send_message(chat_id, safe_text, parse_mode="Markdown")
 
 # --- /goo --- start game
 @dp.message_handler(commands=["goo"])
@@ -102,12 +110,13 @@ async def check_answer(message: types.Message):
                 name = "👤 Nomaʼlum"
             reyting += f"{i+1}. {name} - {ball} ball\n"
 
-        await message.answer(
+        safe_msg = escape_markdown(
             f"🎯 To‘g‘ri javob: {state['current']['muallif']}\n"
             f"🎉 {message.from_user.full_name} +1 ball oldi!\n\n"
             f"🏆 Guruhdagi eng yaxshi 10 ta foydalanuvchi:\n{reyting}"
         )
 
+        await message.answer(safe_msg, parse_mode="Markdown")
         await send_new_question(message.chat.id)
 
 # --- /ball ---
@@ -118,7 +127,7 @@ async def show_score(message: types.Message):
     user_id = str(message.from_user.id)
     chat_scores = scores.get(chat_id, {})
     user_score = chat_scores.get(user_id, 0)
-    await message.answer(f"📊 Sizning guruhdagi umumiy balingiz: {user_score}")
+    await message.answer(f"📊 Sizning guruhdagi umumiy balingiz: {user_score}", parse_mode=None)
 
 # --- Webhook sozlash ---
 @app.on_event("startup")
