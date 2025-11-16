@@ -91,7 +91,7 @@ async def check_answer(message: types.Message):
         scores[chat_id][user_id] = scores[chat_id].get(user_id, 0) + 1
         save_json(SCORE_FILE, scores)
 
-        # Top 10 reyting (medallar)
+        # Top 10 reyting
         top = sorted(scores[chat_id].items(), key=lambda x: x[1], reverse=True)
         medals = ["🥇", "🥈", "🥉"]
         reyting = ""
@@ -123,26 +123,12 @@ async def show_score(message: types.Message):
     ball = scores.get(chat_id, {}).get(user_id, 0)
     await message.answer(f"📊 Sizning balingiz: {ball}")
 
-# ===== 24/7 uyg‘oq saqlash =====
-async def keep_alive():
-    chat_id = 1899194677  # Sizning lichka chat ID
-    while True:
-        try:
-            await bot.send_message(chat_id, "💡 Bot ishlayapti...")
-        except:
-            pass
-        await asyncio.sleep(600)  # 10 daqiqa
-
 # ===== FastAPI Lifespan + Webhook =====
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
     print("✅ Webhook o‘rnatildi:", WEBHOOK_URL)
-
-    # 24/7 uyg‘oq saqlash
-    asyncio.create_task(keep_alive())
-
     yield
     await bot.session.close()
 
