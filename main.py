@@ -5,10 +5,8 @@ import random
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram import md
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
-
 
 # ===== TOKEN & WEBHOOK =====
 API_TOKEN = "8569524026:AAFxbE-g8T04qwHyAK2Uu2KnPR6DQvbH8gI"
@@ -18,19 +16,17 @@ WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
 # ===== BOT + DISPATCHER =====
 bot = Bot(token=API_TOKEN, parse_mode="MarkdownV2")
-Bot.set_current(bot)  # <<< MUHIM >>> Kontekst o‘rnatish
+Bot.set_current(bot)
 
 dp = Dispatcher(bot, storage=MemoryStorage())
-Dispatcher.set_current(dp)  # <<< MUHIM >>> Kontekst o‘rnatish
+Dispatcher.set_current(dp)
 
 logging.basicConfig(level=logging.INFO)
-
 
 # ===== FILES =====
 SAVOLLAR_FILE = "savollar.json"
 SCORE_FILE = "user_scores.json"
 STATE_FILE = "user_states.json"
-
 
 # ===== JSON FUNKSIYALAR =====
 def load_json(filename):
@@ -39,7 +35,6 @@ def load_json(filename):
 def save_json(filename, data):
     json.dump(data, open(filename, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 
-
 # ===== Markdown escape =====
 def escape_md(text):
     chars = r"\_*[]()~`>#+-=|{}.!"
@@ -47,15 +42,12 @@ def escape_md(text):
         text = text.replace(c, f"\\{c}")
     return text
 
-
 # ===== Normalization =====
 def normalize(text):
     return text.lower().strip()
 
-
 # ===== Savol yuborish =====
 async def send_new_question(chat_id):
-
     questions = load_json(SAVOLLAR_FILE)
     if not questions:
         await bot.send_message(chat_id, "❌ Savollar topilmadi.")
@@ -74,17 +66,14 @@ async def send_new_question(chat_id):
     msg = escape_md(f"📘 *{q['kitob']}*\nBu kitobni kim yozgan?")
     await bot.send_message(chat_id, msg)
 
-
 # ===== /goo =====
 @dp.message_handler(commands=["goo"])
 async def goo(message: types.Message):
     await send_new_question(message.chat.id)
 
-
 # ===== Javob tekshirish =====
 @dp.message_handler()
 async def check_answer(message: types.Message):
-
     chat_id = str(message.chat.id)
     user_id = str(message.from_user.id)
 
@@ -98,11 +87,11 @@ async def check_answer(message: types.Message):
     if state.get("answered_by") is not None:
         return
 
-    # Javob tekshirish
-    correct = normalize(state["muallif"])
+    # Javob variantlarini normalizatsiya qilish
+    correct_variants = [normalize(x) for x in state["muallif"]] if isinstance(state["muallif"], list) else [normalize(state["muallif"])]
     user_answer = normalize(message.text)
 
-    if user_answer == correct:
+    if user_answer in correct_variants:
 
         # Birinchi bo‘lib to‘g‘ri javob bergan
         state["answered_by"] = user_id
@@ -132,29 +121,23 @@ async def check_answer(message: types.Message):
 
         msg = escape_md(
             f"🎉 {message.from_user.full_name} to‘g‘ri javob berdi!\n"
-            f"✔️ To‘g‘ri javob: {state['muallif']}\n\n"
+            f"✔️ To‘g‘ri javob: {', '.join(state['muallif']) if isinstance(state['muallif'], list) else state['muallif']}\n\n"
             f"🏆 TOP 10:\n{reyting_text}"
         )
 
-        # <<< MUHIM >>> message.answer o‘rniga bot.send_message ishlatamiz
         await bot.send_message(message.chat.id, msg)
 
         # Yangi savol
         await send_new_question(message.chat.id)
 
-
 # ===== /ball =====
 @dp.message_handler(commands=["ball"])
 async def my_ball(message: types.Message):
-
     scores = load_json(SCORE_FILE)
     chat_id = str(message.chat.id)
     user_id = str(message.from_user.id)
-
     ball = scores.get(chat_id, {}).get(user_id, 0)
-
     await bot.send_message(message.chat.id, f"📊 Sizning balingiz: {ball}")
-
 
 # ===== FASTAPI + WEBHOOK =====
 @asynccontextmanager
@@ -165,21 +148,16 @@ async def lifespan(app: FastAPI):
     yield
     await bot.session.close()
 
-
 app = FastAPI(lifespan=lifespan)
-
 
 @app.post(WEBHOOK_PATH)
 async def webhook(request: Request):
     Bot.set_current(bot)
     Dispatcher.set_current(dp)
-
     data = await request.json()
     update = types.Update(**data)
     await dp.process_update(update)
-
     return {"ok": True}
-
 
 @app.get("/")
 async def home():
